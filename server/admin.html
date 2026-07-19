@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>WorkPortal Admin</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; background: #f4f4f4; }
+    h1 { color: #333; }
+    .backup-item { background: white; padding: 10px; margin: 5px 0; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; }
+    button { padding: 6px 12px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+    button:hover { background: #0056b3; }
+    .error { color: red; }
+    .success { color: green; }
+  </style>
+</head>
+<body>
+  <h1>🔐 WorkPortal Admin – Data Recovery</h1>
+  <div id="status"></div>
+  <h2>Snapshots (Backups)</h2>
+  <div id="backup-list">Loading...</div>
+  <hr>
+  <h2>Export / Import</h2>
+  <button onclick="window.open('/api/export', '_blank')">📥 Export Current State</button>
+  <br><br>
+  <input type="file" id="importFile" accept=".json">
+  <button onclick="importState()">📤 Import State</button>
+  <div id="importStatus"></div>
+
+  <script>
+    async function loadBackups() {
+      try {
+        const res = await fetch('/api/backups');
+        const data = await res.json();
+        const container = document.getElementById('backup-list');
+        if (data.length === 0) {
+          container.innerHTML = '<p>No backups found.</p>';
+          return;
+        }
+        container.innerHTML = data.map(b => `
+          <div class="backup-item">
+            <span>${b.timestamp} (${(b.size/1024).toFixed(1)} KB)</span>
+            <button onclick="restore('${b.name}')">Restore</button>
+          </div>
+        `).join('');
+      } catch (err) {
+        document.getElementById('backup-list').innerHTML = '<p class="error">Failed to load backups.</p>';
+      }
+    }
+
+    async function restore(name) {
+      if (!confirm(`Restore from ${name}? This will create a backup of current state.`)) return;
+      try {
+        const res = await fetch('/api/restore', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ backupName: name })
+        });
+        const result = await res.json();
+        document.getElementById('status').innerHTML = `<p class="success">✅ ${result.message}</p>`;
+        setTimeout(() => location.reload(), 1500);
+      } catch (err) {
+        document.getElementById('status').innerHTML = `<p class="error">❌ Restore failed: ${err.message}</p>`;
+      }
+    }
+
+    async function importState() {
+      const fileInput = document.getElementById('importFile');
+      const file = fileInput.files[0];
+      if (!file) return alert('Select a JSON file first.');
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const data = JSON.parse(e.target.result);
+          const res = await fetch('/api/import', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+          });
+          const result = await res.json();
+          document.getElementById('importStatus').innerHTML = `<p class="success">✅ ${result.message}</p>`;
+          setTimeout(() => location.reload(), 1500);
+        } catch (err) {
+          document.getElementById('importStatus').innerHTML = `<p class="error">❌ Import failed: ${err.message}</p>`;
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    loadBackups();
+  </script>
+</body>
+</html>
